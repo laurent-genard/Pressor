@@ -52,6 +52,7 @@ import com.example.pressor.data.PressorSettings
 import com.example.pressor.data.SettingsRepository
 import com.example.pressor.service.PressorAccessibilityService
 import kotlinx.coroutines.launch
+import java.util.concurrent.CancellationException
 import kotlin.math.roundToLong
 
 private const val MIN_INTERVAL_MILLIS = 100L
@@ -242,12 +243,14 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
                                 targetY = parsedTargetY!!
                             )
                             coroutineScope.launch {
-                                val message = runCatching {
+                                val message = try {
                                     settingsRepository.updateSettings(newSettings)
-                                }.fold(
-                                    onSuccess = { "Settings saved" },
-                                    onFailure = { "Couldn't save settings. Please try again." }
-                                )
+                                    "Settings saved"
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    "Couldn't save settings. Please try again."
+                                }
                                 snackbarHostState.showSnackbar(message)
                             }
                         },
@@ -359,4 +362,4 @@ private fun parseSeconds(value: String): Long? {
 }
 
 private fun formatSeconds(durationMillis: Long): String =
-    String.format(java.util.Locale.getDefault(), "%.1f", durationMillis / 1000.0)
+    String.format(java.util.Locale.getDefault(), "%.3f", durationMillis / 1000.0)
