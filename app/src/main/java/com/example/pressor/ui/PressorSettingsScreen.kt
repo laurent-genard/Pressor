@@ -41,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -49,14 +50,11 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.pressor.data.PressorSettings
+import com.example.pressor.data.PressorSettingsInput
 import com.example.pressor.data.SettingsRepository
 import com.example.pressor.service.PressorAccessibilityService
 import kotlinx.coroutines.launch
 import java.util.concurrent.CancellationException
-import kotlin.math.roundToLong
-
-private const val MIN_INTERVAL_MILLIS = 100L
-private const val MAX_INTERVAL_MILLIS = 600_000L
 
 @Composable
 fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
@@ -103,21 +101,15 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
             } == true
     }
 
-    val holdMillis = parseSeconds(holdSeconds)
-    val breakMillis = parseSeconds(breakSeconds)
-    val parsedRunLimit = runLimit.trim().toLongOrNull()
-    val parsedTargetX = targetX.trim().toIntOrNull()
-    val parsedTargetY = targetY.trim().toIntOrNull()
-    val settingsAreValid = holdMillis != null &&
-        breakMillis != null &&
-        parsedRunLimit != null && parsedRunLimit >= 0L &&
-        parsedTargetX != null && parsedTargetX >= 0 &&
-        parsedTargetY != null && parsedTargetY >= 0
-    val settingsChanged = holdMillis != settings.holdDuration ||
-        breakMillis != settings.breakDuration ||
-        parsedRunLimit != settings.runLimit ||
-        parsedTargetX != settings.targetX ||
-        parsedTargetY != settings.targetY
+    val editedSettings = PressorSettingsInput.parseSettings(
+        holdSeconds = holdSeconds,
+        breakSeconds = breakSeconds,
+        runLimit = runLimit,
+        targetX = targetX,
+        targetY = targetY
+    )
+    val settingsAreValid = editedSettings != null
+    val settingsChanged = editedSettings != null && editedSettings != settings
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -179,7 +171,7 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
                     OutlinedTextField(
                         value = holdSeconds,
                         onValueChange = { holdSeconds = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("hold-duration"),
                         label = { Text("Hold duration (seconds)") },
                         supportingText = { Text("0.1 to 600 seconds") },
                         singleLine = true,
@@ -188,7 +180,7 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
                     OutlinedTextField(
                         value = breakSeconds,
                         onValueChange = { breakSeconds = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("break-duration"),
                         label = { Text("Break duration (seconds)") },
                         supportingText = { Text("0.1 to 600 seconds") },
                         singleLine = true,
@@ -197,7 +189,7 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
                     OutlinedTextField(
                         value = runLimit,
                         onValueChange = { runLimit = it },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().testTag("run-limit"),
                         label = { Text("Run limit") },
                         supportingText = { Text("0 means unlimited") },
                         singleLine = true,
@@ -218,7 +210,7 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
                         OutlinedTextField(
                             value = targetX,
                             onValueChange = { targetX = it },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).testTag("target-x"),
                             label = { Text("X") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -226,7 +218,7 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
                         OutlinedTextField(
                             value = targetY,
                             onValueChange = { targetY = it },
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).testTag("target-y"),
                             label = { Text("Y") },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -235,13 +227,7 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
 
                     Button(
                         onClick = {
-                            val newSettings = PressorSettings(
-                                holdDuration = holdMillis!!,
-                                breakDuration = breakMillis!!,
-                                runLimit = parsedRunLimit!!,
-                                targetX = parsedTargetX!!,
-                                targetY = parsedTargetY!!
-                            )
+                            val newSettings = checkNotNull(editedSettings)
                             coroutineScope.launch {
                                 val message = try {
                                     settingsRepository.updateSettings(newSettings)
@@ -258,6 +244,7 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
+                            .testTag("save-settings")
                     ) {
                         Text("Save settings")
                     }
@@ -351,14 +338,6 @@ private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
             content = content
         )
     }
-}
-
-private fun parseSeconds(value: String): Long? {
-    val seconds = value.trim().replace(',', '.').toDoubleOrNull() ?: return null
-    if (seconds < MIN_INTERVAL_MILLIS / 1000.0 || seconds > MAX_INTERVAL_MILLIS / 1000.0) {
-        return null
-    }
-    return (seconds * 1000).roundToLong()
 }
 
 private fun formatSeconds(durationMillis: Long): String =
