@@ -47,6 +47,27 @@ class SettingsRepository(private val context: Context) {
             )
         }
 
+    suspend fun updateSettings(settings: PressorSettings) {
+        require(settings.holdDuration in 100L..600_000L) {
+            "Hold duration must be between 100 and 600000 milliseconds"
+        }
+        require(settings.breakDuration in 100L..600_000L) {
+            "Break duration must be between 100 and 600000 milliseconds"
+        }
+        require(settings.runLimit >= 0L) { "Run limit must be zero or greater" }
+        require(settings.targetX >= 0 && settings.targetY >= 0) {
+            "Target coordinates must be zero or greater"
+        }
+
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.HOLD_DURATION] = settings.holdDuration
+            preferences[PreferencesKeys.BREAK_DURATION] = settings.breakDuration
+            preferences[PreferencesKeys.RUN_LIMIT] = settings.runLimit
+            preferences[PreferencesKeys.TARGET_X] = settings.targetX
+            preferences[PreferencesKeys.TARGET_Y] = settings.targetY
+        }
+    }
+
     suspend fun updateHoldDuration(duration: Long) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.HOLD_DURATION] = duration
