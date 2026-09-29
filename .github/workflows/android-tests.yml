@@ -28,7 +28,8 @@ jobs:
 
   instrumentation-tests:
     name: Instrumentation tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -46,4 +47,5 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_6
+          emulator-boot-timeout: 300
           script: ./gradlew :app:connectedDebugAndroidTest
