@@ -95,6 +95,7 @@ class PressorSettingsScreenTest {
                 .performScrollTo()
                 .assertIsNotEnabled()
             composeRule.onNodeWithText("Durations must be 0.1–600 seconds", substring = true)
+                .performScrollTo()
                 .assertIsDisplayed()
 
             assertEquals(PressorSettings(), runBlocking { repository.settingsFlow.first() })
