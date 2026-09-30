@@ -35,15 +35,28 @@ class PressorSettingsScreenTest {
     val composeRule = createComposeRule()
 
     @Test
-    fun screenShowsTheSetupRequirements() = withSettingsScreen {
-        composeRule.onNodeWithText("Setup").assertIsDisplayed()
-        composeRule.onNodeWithText("Display over other apps").assertIsDisplayed()
-        composeRule.onNodeWithText("Accessibility service")
-            .performScrollTo()
-            .assertIsDisplayed()
-        composeRule.onNodeWithText("press controls are not active yet", substring = true)
-            .performScrollTo()
-            .assertIsDisplayed()
+    fun screenExplainsLocalOnlyBehavior() = withSettingsScreen {
+        composeRule.onNodeWithText("Private by design").assertIsDisplayed()
+        composeRule.onNodeWithText("does not use the network", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    fun resetRequiresConfirmationAndRestoresDefaults() = withSettingsScreen { repository ->
+        runBlocking {
+            repository.updateSettings(
+                PressorSettings(holdDuration = 2_000L, targetX = 321, targetY = 654)
+            )
+        }
+
+        composeRule.onNodeWithTag("reset-settings").performScrollTo().performClick()
+        composeRule.onNodeWithText("Reset settings?").assertIsDisplayed()
+        composeRule.onNodeWithText("Reset", useUnmergedTree = true).performClick()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithText("Settings reset to defaults")
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+        assertEquals(PressorSettings(), runBlocking { repository.settingsFlow.first() })
     }
 
     @Test
@@ -94,7 +107,7 @@ class PressorSettingsScreenTest {
             composeRule.onNodeWithTag("save-settings")
                 .performScrollTo()
                 .assertIsNotEnabled()
-            composeRule.onNodeWithText("Durations must be 0.1–600 seconds", substring = true)
+            composeRule.onNodeWithText("Durations must be 0.1 to 600 seconds", substring = true)
                 .performScrollTo()
                 .assertIsDisplayed()
 

@@ -1,11 +1,5 @@
 package com.example.pressor.ui
 
-import android.accessibilityservice.AccessibilityServiceInfo
-import android.content.ComponentName
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
-import android.view.accessibility.AccessibilityManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -16,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,34 +24,25 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.pressor.data.PressorSettings
 import com.example.pressor.data.PressorSettingsInput
 import com.example.pressor.data.SettingsRepository
-import com.example.pressor.service.PressorAccessibilityService
 import kotlinx.coroutines.launch
 import java.util.concurrent.CancellationException
 
 @Composable
 fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
-    val context = LocalContext.current
     val settings by settingsRepository.settingsFlow.collectAsStateWithLifecycle(
         initialValue = PressorSettings()
     )
@@ -76,30 +60,7 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
     }
     var targetX by remember(settings.targetX) { mutableStateOf(settings.targetX.toString()) }
     var targetY by remember(settings.targetY) { mutableStateOf(settings.targetY.toString()) }
-
-    val lifecycleOwner = LocalLifecycleOwner.current
-    var setupRefreshKey by remember { mutableIntStateOf(0) }
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) setupRefreshKey++
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    val overlayPermissionGranted = remember(setupRefreshKey) {
-        Settings.canDrawOverlays(context)
-    }
-    val accessibilityServiceEnabled = remember(setupRefreshKey) {
-        val expectedService = ComponentName(context, PressorAccessibilityService::class.java)
-        val accessibilityManager = context.getSystemService(AccessibilityManager::class.java)
-        accessibilityManager
-            ?.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
-            ?.any { service ->
-                val serviceInfo = service.resolveInfo.serviceInfo
-                ComponentName(serviceInfo.packageName, serviceInfo.name) == expectedService
-            } == true
-    }
+    var showResetConfirmation by remember { mutableStateOf(false) }
 
     val editedSettings = PressorSettingsInput.parseSettings(
         holdSeconds = holdSeconds,
@@ -134,7 +95,7 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "Set up permissions and choose your press settings.",
+                        text = "Choose and save your press settings.",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -142,20 +103,14 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
             }
 
             item {
-                SetupCard(
-                    overlayPermissionGranted = overlayPermissionGranted,
-                    accessibilityServiceEnabled = accessibilityServiceEnabled,
-                    onRequestOverlayPermission = {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:${context.packageName}")
-                        )
-                        context.startActivity(intent)
-                    },
-                    onOpenAccessibilitySettings = {
-                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                    }
-                )
+                SettingsCard {
+                    Text("Private by design", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "Pressor stores these settings on this device. It does not use the network, show over other apps, run in the background, or control other apps.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             item {
@@ -248,9 +203,15 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
                     ) {
                         Text("Save settings")
                     }
+                    TextButton(
+                        onClick = { showResetConfirmation = true },
+                        modifier = Modifier.fillMaxWidth().testTag("reset-settings")
+                    ) {
+                        Text("Reset to defaults")
+                    }
                     if (!settingsAreValid) {
                         Text(
-                            "Enter valid values. Durations must be 0.1–600 seconds; other values must be zero or greater.",
+                            "Enter valid values. Durations must be 0.1 to 600 seconds; other values must be zero or greater.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error
                         )
@@ -259,69 +220,32 @@ fun PressorSettingsScreen(settingsRepository: SettingsRepository) {
             }
         }
     }
-}
 
-@Composable
-private fun SetupCard(
-    overlayPermissionGranted: Boolean,
-    accessibilityServiceEnabled: Boolean,
-    onRequestOverlayPermission: () -> Unit,
-    onOpenAccessibilitySettings: () -> Unit
-) {
-    SettingsCard {
-        Text("Setup", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "Pressor needs these system permissions for floating controls and screen interaction.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+    if (showResetConfirmation) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showResetConfirmation = false },
+            title = { Text("Reset settings?") },
+            text = { Text("Your saved values will be replaced with the defaults.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showResetConfirmation = false
+                    coroutineScope.launch {
+                        val message = try {
+                            settingsRepository.updateSettings(PressorSettings())
+                            "Settings reset to defaults"
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            "Couldn't reset settings. Please try again."
+                        }
+                        snackbarHostState.showSnackbar(message)
+                    }
+                }) { Text("Reset") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirmation = false }) { Text("Cancel") }
+            }
         )
-        Spacer(Modifier.height(4.dp))
-
-        SetupRequirement(
-            title = "Display over other apps",
-            enabled = overlayPermissionGranted,
-            actionLabel = if (overlayPermissionGranted) "Granted" else "Allow",
-            onAction = onRequestOverlayPermission
-        )
-        SetupRequirement(
-            title = "Accessibility service",
-            enabled = accessibilityServiceEnabled,
-            actionLabel = if (accessibilityServiceEnabled) "Enabled" else "Open settings",
-            onAction = onOpenAccessibilitySettings
-        )
-
-        Text(
-            "The press controls are not active yet. Accessibility access can expose content from other apps; enable it only if you choose to use Pressor.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
-private fun SetupRequirement(
-    title: String,
-    enabled: Boolean,
-    actionLabel: String,
-    onAction: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(
-                if (enabled) "Ready" else "Required",
-                style = MaterialTheme.typography.bodySmall,
-                color = if (enabled) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        TextButton(onClick = onAction, enabled = !enabled) {
-            Text(actionLabel)
-        }
     }
 }
 

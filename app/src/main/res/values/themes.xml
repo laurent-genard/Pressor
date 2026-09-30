@@ -1,4 +1,4 @@
 <resources>
 
-    <style name="Theme.Pressor" parent="Theme.MaterialComponents.Light" />
+    <style name="Theme.Pressor" parent="@android:style/Theme.Material.Light.NoActionBar" />
 </resources>

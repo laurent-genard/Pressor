@@ -1,8 +1,8 @@
 # Pressor
 
-Pressor is an Android application prototype for configuring repeated press-and-hold automation. The project uses Kotlin, Jetpack Compose, Material 3, Android Accessibility Services, a system overlay, and Preferences DataStore.
+Pressor is an Android settings companion built with Kotlin, Jetpack Compose, Material 3, and Preferences DataStore.
 
-> **Current status:** The configuration screen, permission-status checks, settings validation, persistence, and their tests are implemented. The floating controller and gesture automation engine are not implemented yet. The two service classes are registration scaffolding; they do not currently display an overlay or dispatch gestures. The app is not ready to automate input in other apps.
+> **Current status:** Pressor lets you edit, save, and reset local configuration values. The app requests no user-granted or sensitive Android permissions, has no network access, starts no Pressor background service, and cannot control other apps. Automation is not implemented.
 
 ## Contents
 
@@ -21,11 +21,11 @@ Pressor is an Android application prototype for configuring repeated press-and-h
 
 ## Project status and scope
 
-The app currently provides one configuration screen. A user can inspect whether overlay and accessibility access are enabled, edit settings, and persist valid settings. The accessibility-status check updates when the activity resumes after returning from Android Settings.
+The app currently provides one configuration screen. A user can edit and persist valid settings or confirm a reset to the defaults. Settings remain in app-private Preferences DataStore. Android backup is disabled for the application.
 
 The following project-plan items are still pending:
 
-- A foreground service that creates and manages a draggable floating controller.
+- A foreground service that creates and manages a draggable floating controller (requires a separate product and safety review before implementation).
 - A crosshair/target picker that records coordinates from the live display.
 - Start/stop controls and communication between the overlay and accessibility service.
 - Gesture timing, repeated dispatch, cancellation, and run-limit handling.
@@ -99,15 +99,12 @@ This is a single-module Android application (`:app`) with a single launcher acti
 
 | Path | Responsibility |
 | --- | --- |
-| `app/src/main/AndroidManifest.xml` | App metadata, permissions, launcher activity, accessibility-service registration, and special-use service declaration. |
+| `app/src/main/AndroidManifest.xml` | App metadata and launcher activity. The app currently declares no permissions or services. |
 | `app/src/main/java/com/example/pressor/MainActivity.kt` | Creates the settings repository and hosts the Compose screen. |
-| `app/src/main/java/com/example/pressor/ui/PressorSettingsScreen.kt` | Settings form, input state, save action, permission status, and links to Android Settings. |
+| `app/src/main/java/com/example/pressor/ui/PressorSettingsScreen.kt` | Settings form, local-only privacy note, save action, and confirmed reset action. |
 | `app/src/main/java/com/example/pressor/ui/theme/` | Compose colors, typography, and Material theme. |
 | `app/src/main/java/com/example/pressor/data/SettingsRepository.kt` | Settings data model, DataStore flow, and persistence operations. |
 | `app/src/main/java/com/example/pressor/data/PressorSettingsInput.kt` | Parses and validates user-entered durations, run limit, and coordinates. |
-| `app/src/main/java/com/example/pressor/service/PressorAccessibilityService.kt` | Accessibility service registration scaffold. Event and interruption callbacks are currently empty. |
-| `app/src/main/java/com/example/pressor/service/FloatingControlService.kt` | Service scaffold. It currently returns `START_STICKY` and does not create a notification or overlay. |
-| `app/src/main/res/xml/accessibility_service_config.xml` | Accessibility capabilities and event/window-access declarations. |
 | `app/src/test/` | JVM unit tests for input validation and settings persistence. |
 | `app/src/androidTest/` | Compose UI tests running on Android. |
 | `.github/workflows/android-ci.yml` | Pull-request checks, push checks, version-tag validation, and release APK artifact upload. |
@@ -171,7 +168,16 @@ On Windows PowerShell:
 .\gradlew.bat :app:connectedDebugAndroidTest
 ```
 
-The JVM tests cover duration parsing, validation boundaries, invalid input, DataStore updates, and persistence. The instrumentation tests cover setup requirements, saving form values, and invalid-duration behavior. Add a test with each behavior change; prefer small JVM tests for parsing/domain logic and instrumentation tests for Android/Compose behavior.
+The JVM tests cover duration parsing, validation boundaries, invalid input, DataStore updates, and persistence. The instrumentation tests cover the local-only privacy notice, saving form values, resetting settings, and invalid-duration behavior. Add a test with each behavior change; prefer small JVM tests for parsing/domain logic and instrumentation tests for Android/Compose behavior.
+
+### Test requirements for future Android services
+
+The current settings-only app contains no Pressor service classes, service declarations, or service-specific tests. Do not add a service to the packaged app as untested scaffolding. When a service is proposed and its behavior is implemented, its pull request must include both:
+
+- **Unit tests** for service-independent logic extracted behind small interfaces, such as state transitions, scheduling, run limits, cancellation, retries, and error handling. These tests should use fake clocks, dispatchers, and collaborators so they run deterministically on the JVM.
+- **Android instrumentation tests** for behavior that depends on the Android service lifecycle or platform APIs. Cover the relevant create/start/bind/stop or connect/disconnect paths, cleanup after interruption, and permission or notification behavior. Accessibility-service tests must verify event filtering and gesture-result handling without interacting with unrelated apps or reading their content.
+
+Also test the merged manifest and service configuration: component export state, required permissions and foreground-service type, and the narrowest accessibility event/content capabilities needed. A service test suite is part of the definition of done, and the PR must pass the unit, coverage, lint, and API 35 instrumentation CI jobs before the service is merged or registered in the manifest.
 
 JaCoCo enforces at least **85% line coverage** over `com.example.pressor.data` when Gradle's `check` task runs. This is a data-layer threshold, not an 85% whole-app threshold: Compose UI, activity/service entry points, resources, and instrumentation execution are not included in the JaCoCo percentage. The CI instrumentation job verifies UI tests separately. Expand the coverage scope only when the added classes can be tested meaningfully, and do not exclude implemented business logic simply to satisfy the threshold.
 
@@ -248,7 +254,9 @@ The tag workflow creates an unsigned release APK artifact retained for 90 days. 
 
 ## Permissions and security
 
-The manifest declares internet access, overlay access, accessibility-service binding, and foreground-service/special-use foreground-service permissions. The accessibility-service configuration allows gesture dispatch and window-content retrieval and subscribes to broad event types. This is sensitive access. Users should enable the service only when needed, and developers should narrow its event/content access to the minimum required before implementing automation.
+The app declares no user-granted or sensitive permissions: no `INTERNET`, overlay, accessibility, or foreground-service capability. AndroidX contributes an app-signature-protected permission for its internal dynamic receiver; it does not grant access to the network, screen, or other apps. The manifest merger output should be reviewed whenever dependencies or plugins change, because libraries may contribute manifest entries. The app disables Android backup so the saved settings remain on-device.
+
+The build artifact is a debug APK signed with the standard local debug key. It is suitable for personal installation and evaluation, not trusted production distribution. A debug signature does not prove the software is bug-free or guarantee absolute harmlessness; review the source and merged manifest for the build you install. Pressor is intentionally limited to its own settings screen and local settings data.
 
 Do not add credentials, signing keys, keystores, local SDK paths, or machine-specific Gradle/Android state to Git. Keep CI permissions minimal. Any future release-signing configuration must use protected GitHub secrets or a managed signing service and must never put the key in the repository.
 
@@ -284,23 +292,17 @@ This setting is Windows/JDK-specific and should not be added to CI or committed 
 
 Start an API 35 emulator in Android Studio's Device Manager, confirm `adb devices` lists it as `device`, and rerun `connectedDebugAndroidTest`. The CI emulator is provisioned by the workflow and requires no local device.
 
-### Accessibility or overlay status shows as disabled
-
-These are special Android settings, not runtime permissions granted by a normal dialog. Open the corresponding system settings from the app and return to Pressor; the status is refreshed on activity resume. Remember that enabling the current accessibility service grants capabilities that the unfinished automation feature does not yet use.
-
 ### Coverage check fails
 
 Open the JaCoCo HTML report under `app/build/reports/jacoco/jacocoDebugUnitTestReport/`, find the uncovered data-layer lines, and add tests for behavior rather than excluding classes. A legitimate source change can lower coverage; bring it back above 85% before merging.
 
 ## Known limitations and next steps
 
-- No floating overlay is created, despite the service declaration.
-- No accessibility gesture is dispatched; accessibility callbacks are empty.
+- Press automation, a target picker, and any cross-app interaction are not implemented.
 - No start/stop state, run counter, timing loop, or cancellation model exists.
 - Coordinates are persisted as raw nonnegative integers, with no screen-bound or display-density handling.
-- The accessibility service requests broad event and window-content access; revisit this before release.
 - The release build is not signed and has no distribution pipeline.
 - The version catalog contains dependencies for planned features that are not all currently used.
 - Coverage enforcement measures data-layer line coverage only; broader code coverage remains future work.
 
-Recommended next implementation order: define coordinate semantics and gesture behavior; implement and test the gesture engine in isolation; implement the overlay lifecycle and permission handling; connect start/stop state with cancellation; then expand device tests, accessibility/privacy review, and release signing.
+Recommended next implementation order: define the intended feature and safety boundaries; keep new behavior local to the app unless broader Android access is essential; implement and test the behavior in isolation; then review the merged manifest and release signing before distribution.
