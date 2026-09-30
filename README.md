@@ -250,6 +250,12 @@ To run the same quality job locally, including a clean build, lint, unit tests, 
 .\gradlew.bat --no-daemon clean :app:lintDebug :app:check :app:assembleRelease
 ```
 
+### Download an installable test APK
+
+After a push to `main`, the workflow publishes the debug-signed APK as the `pressor-debug-apk` artifact only after both required CI jobs pass. To download it, open **Actions → Android CI → the latest successful run on `main`**, then select `pressor-debug-apk` under **Artifacts**. The archive contains `app-debug.apk` and its `app-debug.apk.sha256` checksum. The artifact is retained for 90 days.
+
+This debug APK is intended for personal testing and can be sideloaded on an Android phone that supports the app's minimum API level (24). It is signed with the temporary debug key from that CI run; a later run uses another key, so Android will not treat a later CI debug APK as an in-place update. Uninstall the old CI debug build before installing a newer one. The signed `v1.0.0` release APK will use the persistent release key configured through repository secrets and is the path for release updates.
+
 ### First release and Android signing
 
 The first installable release is published from a `vMAJOR.MINOR.PATCH` tag that points to a commit on `main`. The tag workflow requires a release keystore provided as GitHub Actions secrets, builds and verifies the signed APK, waits for both CI jobs to pass, and publishes the APK as an asset on a GitHub Release. Do not create the version tag until signing secrets are configured and the reviewed release commit is on `main`.
