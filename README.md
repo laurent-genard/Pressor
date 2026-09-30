@@ -250,7 +250,39 @@ To run the same quality job locally, including a clean build, lint, unit tests, 
 .\gradlew.bat --no-daemon clean :app:lintDebug :app:check :app:assembleRelease
 ```
 
-The tag workflow creates an unsigned release APK artifact retained for 90 days. It does not create a GitHub Release, sign the APK, publish to an app store, or deploy the application. Configure release signing and publication separately before distributing production builds.
+### First release and Android signing
+
+The first installable release is published from a `vMAJOR.MINOR.PATCH` tag that points to a commit on `main`. The tag workflow requires a release keystore provided as GitHub Actions secrets, builds and verifies the signed APK, waits for both CI jobs to pass, and publishes the APK as an asset on a GitHub Release. Do not create the version tag until signing secrets are configured and the reviewed release commit is on `main`.
+
+Create a dedicated Android release keystore on a trusted machine. Keep the `.jks` file and its passwords under your control; Android updates must keep using the same signing key. Back up the keystore in at least two secure locations before publishing. Never commit it, put it in a build artifact, or share it in chat. If the key is lost, users cannot install an update signed with that key over the existing app.
+
+For example, from a secure directory outside the repository, use `keytool` from the JDK and choose strong, unique passwords when prompted:
+
+```powershell
+keytool -genkeypair -v -keystore pressor-release.jks -alias pressor-release -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Add these repository **Actions secrets** under **Settings → Secrets and variables → Actions**:
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | Base64 encoding of the complete `.jks` file, without wrapping or line breaks. In PowerShell, copy it with `$releaseKey = [Convert]::ToBase64String([IO.File]::ReadAllBytes('.\pressor-release.jks')); Set-Clipboard -Value $releaseKey`. |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password selected during key generation. |
+| `ANDROID_KEY_ALIAS` | `pressor-release` for the example command above. |
+| `ANDROID_KEY_PASSWORD` | Password for the `pressor-release` key entry. |
+
+Keep the keystore file in your secure backup location, not in this repository. The workflow writes a temporary copy under the GitHub runner's temporary directory, uses it only for the tagged build, and requires all four secrets. Untagged pull request and branch builds remain unsigned and do not need signing secrets.
+
+For the initial `v1.0.0` release, merge the reviewed `develop` increment into `main`, ensure the release secrets are set, and create/push the tag from the resulting `main` commit:
+
+```powershell
+git switch main
+git pull --ff-only origin main
+git tag -a v1.0.0 -m "Pressor v1.0.0"
+git push origin v1.0.0
+```
+
+CI verifies the tag is contained in `main`, runs the build, lint, unit and instrumentation tests plus coverage, verifies the APK signature, and only then creates the GitHub Release with the APK and `SHA256SUMS.txt` attached. Verify the APK against the checksum before installation. Because this is a new signing identity, an existing debug-signed Pressor installation cannot be updated in place with the release APK; uninstall the debug build first if Android reports a signature mismatch.
 
 ## Permissions and security
 
