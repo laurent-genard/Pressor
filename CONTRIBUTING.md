@@ -7,7 +7,7 @@
 - Create short-lived branches from `develop`, named `feature/<issue>-<short-name>` or `fix/<issue>-<short-name>`.
 - Open pull requests from those branches into `develop`. For a production hotfix, branch from `main` and open a pull request into `main`; merge the fix back into `develop` as well.
 - For dependent work, a short-lived feature branch may target another feature branch; CI runs for these stacked pull requests too. Retarget it to `develop` after its base feature is merged.
-- Promote a sprint increment by opening a pull request from `develop` into `main`. Tag the resulting commit as `vMAJOR.MINOR.PATCH` after review. The Android CI workflow validates version tags and retains the release APK as a build artifact.
+- Promote a sprint increment by opening a pull request from `develop` into `main`. After review, set up the Android signing secrets and tag the release commit as `vMAJOR.MINOR.PATCH`. The tag workflow verifies and publishes the signed release APK as a GitHub Release asset only after both CI jobs pass.
 
 Keep pull requests small enough to review within a sprint. Link the issue or sprint item, describe user-visible behavior and risk, and include the tests added or updated.
 
