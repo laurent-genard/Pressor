@@ -30,6 +30,10 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         run: |
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Version tags must use vMAJOR.MINOR.PATCH format."
+            exit 1
+          }
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
             echo "Version tags must reference commits contained in main."
             exit 1
@@ -61,21 +65,11 @@ jobs:
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore_path"
           echo "ANDROID_KEYSTORE_PATH=$keystore_path" >> "$GITHUB_ENV"
 
-      - name: Export signing values for Gradle
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        shell: bash
-        run: |
-          {
-            echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
-            echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS"
-            echo "ANDROID_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
-          } >> "$GITHUB_ENV"
-
       - name: Build, lint, test, and enforce coverage
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEY_ALIAS || '' }}
+          ANDROID_KEY_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEY_PASSWORD || '' }}
         run: ./gradlew --no-daemon clean :app:lintDebug :app:check :app:assembleRelease
 
       - name: Verify signed release APK
@@ -127,7 +121,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sha256sum release-apk/*.apk > release-apk/SHA256SUMS.txt
-          gh release create "$GITHUB_REF_NAME" release-apk/*.apk release-apk/SHA256SUMS.txt --verify-tag --generate-notes
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-apk/*.apk release-apk/SHA256SUMS.txt --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-apk/*.apk release-apk/SHA256SUMS.txt --verify-tag --generate-notes
+          fi
 
   instrumentation:
     name: Instrumentation tests (API 35)
