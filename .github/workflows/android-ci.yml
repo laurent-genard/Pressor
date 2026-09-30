@@ -1,0 +1,101 @@
+name: Android CI
+
+on:
+  pull_request:
+    branches: [develop, main, 'feat/**', 'feature/**']
+  push:
+    branches: [develop, main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  quality:
+    name: Build, lint, unit tests, and coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Verify version tag is based on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "Version tags must reference commits contained in main."
+            exit 1
+          }
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Build, lint, test, and enforce coverage
+        run: ./gradlew --no-daemon clean :app:lintDebug :app:check :app:assembleRelease
+
+      - name: Upload unit test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-and-coverage-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/reports/jacoco/jacocoDebugUnitTestReport/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Store versioned release APK
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: pressor-${{ github.ref_name }}
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 90
+
+  instrumentation:
+    name: Instrumentation tests (API 35)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Java
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Compose instrumentation tests on API 35
+        uses: ReactiveCircus/android-emulator-runner@v2.38.0
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-boot-timeout: 300
+          script: ./gradlew --no-daemon :app:connectedDebugAndroidTest

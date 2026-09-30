@@ -3,6 +3,11 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.devtools.ksp)
     alias(libs.plugins.jetbrains.kotlin.plugin.serialization)
+    jacoco
+}
+
+jacoco {
+    toolVersion = "0.8.13"
 }
 
 android {
@@ -88,4 +93,61 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     "ksp"(libs.androidx.room.compiler)
     "ksp"(libs.moshi.kotlin.codegen)
+}
+
+// Enforce coverage for implemented application logic. Android framework entry points,
+// Compose UI, and the not-yet-implemented service shells are covered by instrumentation
+// tests or will be brought into this gate as their behavior is implemented.
+tasks.register<JacocoReport>("jacocoDebugUnitTestReport") {
+    dependsOn("testDebugUnitTest")
+    reports {
+        xml.required = true
+        html.required = true
+    }
+    sourceDirectories.setFrom("src/main/java")
+    classDirectories.setFrom(
+        fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
+            include("com/example/pressor/data/**")
+        },
+        fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+            include("com/example/pressor/data/**")
+        },
+        fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
+            include("com/example/pressor/data/**")
+        }
+    )
+    executionData.setFrom(fileTree(layout.buildDirectory) {
+        include("jacoco/testDebugUnitTest.exec", "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+    })
+}
+
+tasks.register<JacocoCoverageVerification>("jacocoDebugUnitTestCoverageVerification") {
+    dependsOn("jacocoDebugUnitTestReport")
+    val kotlinClasses = fileTree(layout.buildDirectory.dir("tmp/kotlin-classes/debug")) {
+        include("com/example/pressor/data/**")
+    }
+    val agp9KotlinClasses = fileTree(layout.buildDirectory.dir("intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes")) {
+        include("com/example/pressor/data/**")
+    }
+    val javaClasses = fileTree(layout.buildDirectory.dir("intermediates/javac/debug/compileDebugJavaWithJavac/classes")) {
+        include("com/example/pressor/data/**")
+    }
+    classDirectories.setFrom(agp9KotlinClasses, kotlinClasses, javaClasses)
+    executionData.setFrom(fileTree(layout.buildDirectory) {
+        include("jacoco/testDebugUnitTest.exec", "outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
+    })
+    violationRules {
+        rule {
+            element = "BUNDLE"
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.85".toBigDecimal()
+            }
+        }
+    }
+}
+
+tasks.named("check") {
+    dependsOn("jacocoDebugUnitTestCoverageVerification")
 }
