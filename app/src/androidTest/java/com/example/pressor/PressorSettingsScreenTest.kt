@@ -116,7 +116,6 @@ class PressorSettingsScreenTest {
             test(repository)
             composeRule.waitForIdle()
         } finally {
-            composeRule.setContent {}
             composeRule.waitForIdle()
             dataStoreScope.cancel()
             testFile.delete()
