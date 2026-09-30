@@ -31,6 +31,30 @@ android {
             }
         }
     }
+
+    // A local/PR build remains possible without signing credentials. Tag builds
+    // provide these values from protected GitHub Actions secrets.
+    val releaseStoreFile = providers.environmentVariable("ANDROID_KEYSTORE_PATH").orNull
+    val releaseStorePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orNull
+    val releaseKeyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+    val releaseKeyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+    val releaseSigningValues = listOf(
+        releaseStoreFile,
+        releaseStorePassword,
+        releaseKeyAlias,
+        releaseKeyPassword,
+    )
+
+    if (releaseSigningValues.all { !it.isNullOrBlank() }) {
+        signingConfigs.create("release") {
+            storeFile = file(requireNotNull(releaseStoreFile))
+            storePassword = releaseStorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
+        }
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("release")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11

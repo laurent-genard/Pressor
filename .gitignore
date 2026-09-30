@@ -13,6 +13,9 @@
 .externalNativeBuild
 .cxx
 local.properties
+*.jks
+*.keystore
+*.p12
 
 # Android Studio / IntelliJ project-local files
 .idea/
