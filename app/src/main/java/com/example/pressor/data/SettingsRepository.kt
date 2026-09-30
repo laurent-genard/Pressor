@@ -19,7 +19,9 @@ data class PressorSettings(
     val targetY: Int = 0
 )
 
-class SettingsRepository(private val context: Context) {
+class SettingsRepository(private val dataStore: DataStore<Preferences>) {
+
+    constructor(context: Context) : this(context.dataStore)
 
     private object PreferencesKeys {
         val HOLD_DURATION = longPreferencesKey("hold_duration")
@@ -29,7 +31,7 @@ class SettingsRepository(private val context: Context) {
         val TARGET_Y = intPreferencesKey("target_y")
     }
 
-    val settingsFlow: Flow<PressorSettings> = context.dataStore.data
+    val settingsFlow: Flow<PressorSettings> = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(emptyPreferences())
@@ -47,26 +49,40 @@ class SettingsRepository(private val context: Context) {
             )
         }
 
+    suspend fun updateSettings(settings: PressorSettings) {
+        require(PressorSettingsInput.isValid(settings)) {
+            "Settings contain values outside their supported ranges"
+        }
+
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.HOLD_DURATION] = settings.holdDuration
+            preferences[PreferencesKeys.BREAK_DURATION] = settings.breakDuration
+            preferences[PreferencesKeys.RUN_LIMIT] = settings.runLimit
+            preferences[PreferencesKeys.TARGET_X] = settings.targetX
+            preferences[PreferencesKeys.TARGET_Y] = settings.targetY
+        }
+    }
+
     suspend fun updateHoldDuration(duration: Long) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferencesKeys.HOLD_DURATION] = duration
         }
     }
 
     suspend fun updateBreakDuration(duration: Long) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferencesKeys.BREAK_DURATION] = duration
         }
     }
 
     suspend fun updateRunLimit(limit: Long) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferencesKeys.RUN_LIMIT] = limit
         }
     }
 
     suspend fun updateTargetPosition(x: Int, y: Int) {
-        context.dataStore.edit { preferences ->
+        dataStore.edit { preferences ->
             preferences[PreferencesKeys.TARGET_X] = x
             preferences[PreferencesKeys.TARGET_Y] = y
         }
