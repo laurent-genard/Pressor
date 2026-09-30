@@ -70,7 +70,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
           ANDROID_KEY_ALIAS: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEY_ALIAS || '' }}
           ANDROID_KEY_PASSWORD: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.ANDROID_KEY_PASSWORD || '' }}
-        run: ./gradlew --no-daemon clean :app:lintDebug :app:check :app:assembleRelease
+        run: ./gradlew --no-daemon clean :app:lintDebug :app:check :app:assembleRelease :app:assembleDebug
 
       - name: Verify signed release APK
         if: startsWith(github.ref, 'refs/tags/v')
@@ -101,6 +101,15 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 90
+
+      - name: Stage installable debug APK for main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pressor-debug-apk-staging
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 1
 
   publish-release:
     name: Publish GitHub release
@@ -159,3 +168,26 @@ jobs:
           profile: pixel_6
           emulator-boot-timeout: 300
           script: ./gradlew --no-daemon :app:connectedDebugAndroidTest
+
+  installable-apk:
+    name: Store installable debug APK
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [quality, instrumentation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download tested debug APK
+        uses: actions/download-artifact@v4
+        with:
+          name: pressor-debug-apk-staging
+          path: debug-apk
+
+      - name: Create APK checksum
+        run: cd debug-apk && sha256sum app-debug.apk > app-debug.apk.sha256
+
+      - name: Store installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: pressor-debug-apk
+          path: debug-apk/*
+          if-no-files-found: error
+          retention-days: 90
