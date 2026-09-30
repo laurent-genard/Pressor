@@ -1,4 +1,3 @@
 <resources>
     <string name="app_name">Pressor</string>
-    <string name="accessibility_service_label">Pressor Accessibility Service</string>
 </resources>
